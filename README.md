@@ -11,10 +11,11 @@ author said his Jev opponent was easy to beat.)
 
 ![Connect Four vs Jev — the board beside the live Jev inspector: per-column probabilities ticked against engine ground truth, decision trace, latency, and bytes on the wire](c4.png)
 
-**The short version: it was the queries.** Eight strategies play the
+**The short version: it was the queries.** Nine strategies play the
 identical model with identical rules. The only variables are how the
-question is asked and how the answers are prioritized — and that spans
-"can't see three-in-a-row" to "we can't beat it anymore."
+question is asked, how the answers are prioritized, and how much the
+engine pre-computes — and that spans "can't see three-in-a-row" to a
+champion that thinks in 1.4 KB.
 
 ## The strategies
 
@@ -25,11 +26,12 @@ question is asked and how the answers are prioritized — and that spans
 | `two-phase` | threat-perception request first, positional request only if calm | works; two round-trips |
 | `spoonfed` | same Nouls over **pre-computed marked 4-cell lines** in state | ~99-100% accuracy — representation was the bottleneck |
 | `blocker` | threat questions, pure-defense order: block > cap twos > win | a defender with two-in-a-row reflexes |
-| `radar` | spoonfed + open-two detection: win > block > **cap** > **extend** | the champion — try to beat it |
+| `radar` | spoonfed + open-two detection: win > block > **cap** > **extend** | perception-side champion: Jev sees, code decides |
 | `radar-trim` | radar compressed: shared framing in state, lean questions | **−36% input tokens** for ~3-4 pts vs radar itself |
 | `radar-sym` | radar with symbol lines (`YY*.`) instead of words | **−57% tokens but rejected**: symbols cost 6-8 pts of judgment |
+| `annotated` | the engine computes every tactical fact in code and bakes the verdicts into ONE Choice's option descriptions; Jev only chooses | **the champion: 94-4-1 over radar at 1.4 KB/request — 25× less than radar** |
 
-## Findings from ~1,500 autoplayed games
+## Findings from ~1,800 autoplayed games
 
 - **spoonfed vs decomposed, 100 games:** 74.7% vs 22.2%. Same model — the
   query representation alone was worth ~52 points of win rate.
@@ -55,6 +57,16 @@ question is asked and how the answers are prioritized — and that spans
 - Question wording matters measurably everywhere: adding explicit valid
   orderings *and a named non-example* to one question lifted its accuracy
   92.0% → 96.6%.
+- **Code-side decisions beat pure Jev perception — decisively.**
+  `annotated` (after [sliday/jev-chess-algo](https://github.com/sliday/jev-chess-algo))
+  moves the tactical work out of the model entirely: the engine computes
+  exact facts (wins, blocks, blunders, developing threats) and writes them
+  into the option descriptions; Jev answers one question as a strategist.
+  Result: **94-4-1 over radar**, including 45/49 wins from the second
+  seat, at **1,398 bytes/request vs radar's 34,335** — the token savings
+  are substantial because perception was the expensive part. The law:
+  spend code on everything code can compute; spend the model only on the
+  judgment code can't make.
 
 ## Setup
 
@@ -70,8 +82,7 @@ round-trip: per-column probabilities with ✓/✗ ticks against engine ground
 truth, the decision trace, latency, bytes sent/received, raw JSON with a
 copy button. Games append JSONL transcripts under `connect4/transcripts/`.
 
-Suggested route: beat `naive` (easy), then `decomposed` (doable), then try
-`radar` (good luck — build two in a row and watch it land on you).
+Suggested route: beat `naive` (easy), then `decomposed` (doable), then try `radar`, then face `annotated` (the 94-4 champion — good luck).
 
 ## Jev vs Jev
 
@@ -91,12 +102,12 @@ concurrency of 8.
 
 - `connect4/engine.ts` — pure rules + ground-truth tactics (never sent to
   Jev; used to grade its answers).
-- `connect4/strategies/` — the eight strategies behind one interface.
+- `connect4/strategies/` — the nine strategies behind one interface.
   The model is never assumed to know Connect Four.
 - `connect4/server.ts` — Bun server; your API key stays server-side.
 - `connect4/match.ts` + `match-cli.ts` — the autoplay match runner.
 - `src/jev-client.ts` — minimal TypeSafe systemone client (30s timeout,
   one retry).
 
-No dependencies, no build step. Tests: `bun test` (83 across engine,
+No dependencies, no build step. Tests: `bun test` (87 across engine,
 strategies, server, match — Jev is mocked; no API calls).

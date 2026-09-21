@@ -8,6 +8,7 @@ import {
   type Board, type Cell, type Player,
 } from "./engine";
 import { makeAsk } from "./jev";
+import { annotated } from "./strategies/annotated";
 import { decomposed } from "./strategies/decomposed";
 import { naive } from "./strategies/naive";
 import { radarSym, radarTrim } from "./strategies/lite";
@@ -25,6 +26,7 @@ export const STRATEGIES: Record<string, Strategy> = {
   radar,
   "radar-trim": radarTrim,
   "radar-sym": radarSym,
+  annotated,
 };
 
 export interface Deps {

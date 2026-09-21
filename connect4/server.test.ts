@@ -13,9 +13,9 @@ function deps(answers: Record<string, NoulAnswer>, transcript: unknown[] = []): 
   };
 }
 
-test("registry exposes all eight strategies", () => {
+test("registry exposes all nine strategies", () => {
   expect(Object.keys(STRATEGIES).sort()).toEqual(
-    ["blocker", "decomposed", "naive", "radar", "radar-sym", "radar-trim", "spoonfed", "two-phase"]
+    ["annotated", "blocker", "decomposed", "naive", "radar", "radar-sym", "radar-trim", "spoonfed", "two-phase"]
   );
 });
 
