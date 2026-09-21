@@ -9,6 +9,8 @@ Built to answer one question: when an AI plays a board game badly, is it
 the model — or the way you're asking? (Inspired by a checkers demo whose
 author said his Jev opponent was easy to beat.)
 
+![Connect Four vs Jev — the board beside the live Jev inspector: per-column probabilities ticked against engine ground truth, decision trace, latency, and bytes on the wire](c4.png)
+
 **The short version: it was the queries.** Eight strategies play the
 identical model with identical rules. The only variables are how the
 question is asked and how the answers are prioritized — and that spans
