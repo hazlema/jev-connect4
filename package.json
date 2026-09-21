@@ -1,0 +1,10 @@
+{
+  "name": "connect4-jev",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "c4": "bun run connect4/server.ts",
+    "c4:match": "bun run connect4/match-cli.ts",
+    "test": "bun test"
+  }
+}

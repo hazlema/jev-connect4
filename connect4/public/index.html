@@ -1,0 +1,233 @@
+<!-- connect4/public/index.html -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Connect Four vs Jev</title>
+<style>
+  :root { --yellow:#f5c518; --red:#e0453a; --bg:#14161a; --panel:#1e2128; --line:#333842; --text:#d8dce3; --dim:#8a919e; --ok:#4caf7d; --bad:#e0453a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui, sans-serif; display:flex; gap:16px; padding:16px; height:100vh; }
+  h1 { font-size:16px; margin:0 0 10px; }
+  #left { width: 460px; flex-shrink:0; }
+  #controls { display:flex; gap:8px; margin-bottom:10px; align-items:center; flex-wrap:wrap; }
+  select, button { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 10px; font:inherit; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  #board { display:grid; grid-template-columns:repeat(7, 60px); gap:6px; background:#20242c; padding:10px; border-radius:10px; width:fit-content; }
+  .cell { width:60px; height:60px; border-radius:50%; background:var(--bg); border:2px solid var(--line); transition:background .15s; }
+  .cell.yellow { background:var(--yellow); border-color:var(--yellow); }
+  .cell.red { background:var(--red); border-color:var(--red); }
+  .col-hit { cursor:pointer; }
+  .col-hit:hover .cell:not(.yellow):not(.red) { border-color:var(--dim); }
+  #status { margin-top:10px; min-height:22px; font-weight:600; }
+  #status.err { color: var(--bad); }
+  #inspector { flex:1; overflow-y:auto; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:10px; }
+  .card h3 { margin:0 0 6px; font-size:13px; }
+  .card .meta { color:var(--dim); font-size:12px; margin-bottom:6px; }
+  table { border-collapse:collapse; font-size:12px; margin:6px 0; }
+  th, td { border:1px solid var(--line); padding:3px 8px; text-align:center; }
+  th { color:var(--dim); font-weight:600; }
+  td.tick { color:var(--ok); } td.cross { color:var(--bad); font-weight:700; }
+  details { margin-top:6px; } summary { cursor:pointer; color:var(--dim); font-size:12px; }
+  pre { background:#111318; padding:8px; border-radius:6px; overflow-x:auto; font-size:11px; max-height:300px; }
+  .decision { color:var(--yellow); font-size:12px; }
+</style>
+</head>
+<body>
+<div id="left">
+  <h1>Connect Four vs Jev</h1>
+  <div id="controls">
+    <select id="strategy">
+      <option value="naive">naive (control)</option>
+      <option value="decomposed" selected>decomposed</option>
+      <option value="two-phase">two-phase</option>
+      <option value="spoonfed">spoonfed</option>
+      <option value="blocker">blocker (defensive)</option>
+      <option value="radar">radar (threat model)</option>
+    </select>
+    <select id="side">
+      <option value="yellow" selected>you: yellow (first)</option>
+      <option value="red">you: red (second)</option>
+    </select>
+    <button id="newgame">New game</button>
+    <button id="retry" style="display:none">Retry turn</button>
+  </div>
+  <div id="board"></div>
+  <div id="status"></div>
+</div>
+<div id="inspector"><h1>Jev inspector</h1><div id="cards"></div></div>
+
+<script>
+const ROWS = 6, COLS = 7;
+let board, gameId, human, ai, over, busy;
+
+const $ = (id) => document.getElementById(id);
+const statusEl = $("status"), cards = $("cards");
+
+function newGame() {
+  board = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+  gameId = "g-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
+  human = $("side").value; ai = human === "yellow" ? "red" : "yellow";
+  over = false; busy = false;
+  cards.innerHTML = ""; setStatus("");
+  $("retry").style.display = "none";
+  render();
+  if (ai === "yellow") aiTurn(); // yellow always moves first
+}
+
+function setStatus(msg, isErr) {
+  statusEl.textContent = msg;
+  statusEl.className = isErr ? "err" : "";
+}
+
+function render() {
+  const el = $("board"); el.innerHTML = "";
+  for (let c = 0; c < COLS; c++) {
+    const colDiv = document.createElement("div");
+    colDiv.className = "col-hit";
+    colDiv.style.display = "flex"; colDiv.style.flexDirection = "column"; colDiv.style.gap = "6px";
+    colDiv.onclick = () => humanMove(c);
+    for (let r = ROWS - 1; r >= 0; r--) {
+      const cell = document.createElement("div");
+      cell.className = "cell" + (board[r][c] ? " " + board[r][c] : "");
+      colDiv.appendChild(cell);
+    }
+    el.appendChild(colDiv);
+  }
+}
+
+function finish(st) {
+  if (st.state === "won") { over = true; setStatus(st.winner === human ? "You win! 🎉" : "Jev wins."); }
+  else if (st.state === "draw") { over = true; setStatus("Draw."); }
+}
+
+async function post(path, payload) {
+  const res = await fetch(path, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  let body;
+  try { body = await res.json(); } catch (_) { body = {}; }
+  if (!res.ok) throw new Error(body.error || ("HTTP " + res.status));
+  return body;
+}
+
+async function humanMove(column) {
+  if (over || busy) return;
+  busy = true; setStatus("");
+  try {
+    const r = await post("/api/drop", { gameId, board, column, player: human });
+    board = r.board; render(); finish(r.status);
+    if (!over) await aiTurn();
+  } catch (e) {
+    setStatus(e.message, true);
+  } finally { busy = false; }
+}
+
+async function aiTurn() {
+  busy = true;
+  setStatus("Jev is thinking (" + $("strategy").value + ")…");
+  $("retry").style.display = "none";
+  try {
+    const r = await post("/api/move", { gameId, board, strategy: $("strategy").value, aiPlayer: ai });
+    board = r.board; render();
+    addCard(r);
+    setStatus(over ? statusEl.textContent : "");
+    finish(r.status);
+    if (!over) setStatus("Your turn.");
+  } catch (e) {
+    setStatus("Jev turn failed: " + e.message, true);
+    $("retry").style.display = "";
+  } finally { busy = false; }
+}
+
+$("retry").onclick = () => { if (!over) aiTurn(); };
+$("newgame").onclick = newGame;
+
+// ---------- inspector ----------
+
+function truthFor(gt, col) { return gt.find((t) => t.column === col); }
+
+// Grading uses p >= 0.5 (was Jev right?), independent of the 0.7 acting thresholds in strategies/types.ts.
+function probCell(p, truth) {
+  if (p === undefined) return "<td>—</td>";
+  const agree = truth === undefined ? null : (p >= 0.5) === truth;
+  const cls = agree === null ? "" : agree ? "tick" : "cross";
+  const mark = agree === null ? "" : agree ? " ✓" : " ✗";
+  return `<td class="${cls}">${p.toFixed(2)}${mark}</td>`;
+}
+
+function roundTable(round, gt) {
+  const ids = Object.keys(round.answers);
+  const isSpoonfed = round.label === "move-eval-spoonfed";
+  const cols = [...new Set(ids.map((id) => (id.match(/_(\d)$/) || [])[1]).filter(Boolean))]
+    .map(Number).sort((a, b) => a - b);
+  let html = "";
+  if (cols.length) {
+    const handsHeader = isSpoonfed ? "hands win (above)" : "hands win";
+    const hasRadar = ids.some((id) => id.startsWith("open3_"));
+    html += `<table><tr><th>col</th><th>win</th><th>block</th><th>${handsHeader}</th>` +
+      (hasRadar ? "<th>open3</th><th>cap</th>" : "") + "</tr>";
+    for (const c of cols) {
+      const t = truthFor(gt, c) || {};
+      const handsGt = isSpoonfed ? t.handsWinAbove : t.handsWin;
+      html += `<tr><td>${c}</td>` +
+        probCell(round.answers["win_" + c]?.noul, t.winsNow) +
+        probCell(round.answers["block_" + c]?.noul, t.blocksWin) +
+        probCell(round.answers["hand_" + c]?.noul, handsGt) +
+        (hasRadar
+          ? probCell(round.answers["open3_" + c]?.noul, t.makesThree) +
+            probCell(round.answers["cap_" + c]?.noul, t.capsTwo)
+          : "") + "</tr>";
+    }
+    html += "</table>";
+  }
+  for (const id of ids) {
+    const a = round.answers[id];
+    if (a.probabilities && !/_(\d)$/.test(id)) {
+      const entries = Object.entries(a.probabilities).sort((x, y) => y[1] - x[1]);
+      // For two-phase threat answers, compute agreement tick against ground truth
+      let tick = "";
+      if (gt && (id === "my_threat" || id === "opp_threat")) {
+        const chosenCol = a.choice ? (a.choice === "none" ? null : (a.choice.match(/^col(\d)$/) || [])[1]) : null;
+        const chosenN = chosenCol !== null && chosenCol !== undefined ? Number(chosenCol) : null;
+        const gtSet = id === "my_threat"
+          ? gt.filter((x) => x.winsNow).map((x) => x.column)
+          : gt.filter((x) => x.blocksWin).map((x) => x.column);
+        const agreed = (chosenN !== null && gtSet.includes(chosenN)) ||
+          (a.choice === "none" && gtSet.length === 0);
+        tick = agreed ? ' <span class="tick">✓</span>' : ' <span class="cross">✗</span>';
+      }
+      html += `<table><tr><th colspan="2">${escapeHtml(id)} → ${escapeHtml(a.choice ?? "?")}${tick}</th></tr>` +
+        entries.map(([k, p]) => `<tr><td>${escapeHtml(k)}</td><td>${p.toFixed(2)}</td></tr>`).join("") +
+        "</table>";
+    }
+  }
+  return html;
+}
+
+function addCard(r) {
+  const div = document.createElement("div");
+  div.className = "card";
+  const latency = r.rounds.reduce((s, x) => s + x.latencyMs, 0);
+  div.innerHTML =
+    `<h3>Move → column ${r.column}</h3>` +
+    `<div class="meta">${r.rounds.length} request(s) · ${Math.round(latency)} ms · ` +
+    `${escapeHtml(r.rounds.map((x) => x.label).join(", "))}</div>` +
+    `<div class="decision">${escapeHtml(r.decision)}</div>` +
+    r.rounds.map((round) => roundTable(round, r.groundTruth)).join("") +
+    `<details><summary>raw request/response JSON</summary><pre>${
+      escapeHtml(JSON.stringify(r.rounds, null, 2))
+    }</pre></details>`;
+  cards.prepend(div);
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+newGame();
+</script>
+</body>
+</html>

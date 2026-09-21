@@ -1,0 +1,3 @@
+.env
+connect4/transcripts/
+node_modules/
