@@ -30,6 +30,8 @@
   th { color:var(--dim); font-weight:600; }
   td.tick { color:var(--ok); } td.cross { color:var(--bad); font-weight:700; }
   details { margin-top:6px; } summary { cursor:pointer; color:var(--dim); font-size:12px; }
+  .copybtn { font-size:11px; padding:1px 8px; margin-left:8px; }
+  .bytes { color:var(--dim); font-size:11px; margin-left:8px; }
   pre { background:#111318; padding:8px; border-radius:6px; overflow-x:auto; font-size:11px; max-height:300px; }
   .decision { color:var(--yellow); font-size:12px; }
 </style>
@@ -45,6 +47,8 @@
       <option value="spoonfed">spoonfed</option>
       <option value="blocker">blocker (defensive)</option>
       <option value="radar">radar (threat model)</option>
+      <option value="radar-trim">radar-trim (lean queries)</option>
+      <option value="radar-sym">radar-sym (symbol lines)</option>
     </select>
     <select id="side">
       <option value="yellow" selected>you: yellow (first)</option>
@@ -217,14 +221,36 @@ function addCard(r) {
     `${escapeHtml(r.rounds.map((x) => x.label).join(", "))}</div>` +
     `<div class="decision">${escapeHtml(r.decision)}</div>` +
     r.rounds.map((round) => roundTable(round, r.groundTruth)).join("") +
-    `<details><summary>raw request/response JSON</summary><pre>${
+    `<details><summary>raw request/response JSON <button class="copybtn">copy JSON</button>` +
+    `<span class="bytes">${fmtBytes(sentBytes(r.rounds))} sent · ${fmtBytes(recvBytes(r.rounds))} received</span>` +
+    `</summary><pre>${
       escapeHtml(JSON.stringify(r.rounds, null, 2))
     }</pre></details>`;
+  const btn = div.querySelector(".copybtn");
+  btn.onclick = (e) => {
+    e.preventDefault(); // don't toggle the <details>
+    e.stopPropagation();
+    navigator.clipboard.writeText(JSON.stringify(r.rounds, null, 2)).then(
+      () => { btn.textContent = "copied ✓"; setTimeout(() => (btn.textContent = "copy JSON"), 1200); },
+      () => { btn.textContent = "copy failed"; setTimeout(() => (btn.textContent = "copy JSON"), 1200); }
+    );
+  };
   cards.prepend(div);
 }
 
 function escapeHtml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// What went to Jev (state + questions) and what came back (answers).
+function sentBytes(rounds) {
+  return rounds.reduce((s, x) => s + JSON.stringify({ state: x.state, questions: x.questions }).length, 0);
+}
+function recvBytes(rounds) {
+  return rounds.reduce((s, x) => s + JSON.stringify(x.answers).length, 0);
+}
+function fmtBytes(n) {
+  return n >= 1024 ? (n / 1024).toFixed(1) + " KB" : n + " B";
 }
 
 newGame();

@@ -13,7 +13,7 @@ import { candidate, MOVE_MARK, tacticQuestions } from "./spoonfed";
 import {
   boardState, BLOCK_THRESHOLD, colKey, HANDS_THRESHOLD, pickFromChoice,
   RULES, WIN_THRESHOLD,
-  type Strategy,
+  type JevRound, type Strategy,
 } from "./types";
 
 export const OPEN3_THRESHOLD = 0.7;
@@ -57,7 +57,7 @@ function radarQuestions(me: Player, c: number): Record<string, NoulQuestion> {
   };
 }
 
-type Rung = "win" | "block" | "open3" | "cap";
+export type Rung = "win" | "block" | "open3" | "cap";
 const RUNG_DEFS: Record<Rung, { prefix: string; threshold: number }> = {
   win: { prefix: "win_", threshold: WIN_THRESHOLD },
   block: { prefix: "block_", threshold: BLOCK_THRESHOLD },
@@ -86,33 +86,40 @@ function makeThreatStrategy(name: string, rungs: Rung[]): Strategy {
         questions
       );
 
-      const noulAt = (id: string) => round.answers[id]?.noul ?? 0;
-      const best = (prefix: string) =>
-        legal.map((c) => ({ c, p: noulAt(`${prefix}${c}`) })).sort((a, b) => b.p - a.p)[0];
-
-      for (const kind of rungs) {
-        const { prefix, threshold } = RUNG_DEFS[kind];
-        const top = best(prefix);
-        if (top.p >= threshold) {
-          return {
-            column: top.c,
-            rounds: [round],
-            decision: `${name} ${kind}: col ${top.c} @ ${top.p.toFixed(2)}`,
-          };
-        }
-      }
-
-      const safe = legal.filter((c) => noulAt(`hand_${c}`) < HANDS_THRESHOLD);
-      const pool = safe.length > 0 ? safe : legal;
-      const pos = pickFromChoice(round.answers.pos, pool);
-      const avoided = legal.length - pool.length;
-      const note = avoided > 0 ? ` (avoided ${avoided} losing col(s))` : "";
-      return {
-        column: pos.column,
-        rounds: [round],
-        decision: `${name} positional: col ${pos.column} @ ${pos.p.toFixed(2)}${note}`,
-      };
+      const { column, decision } = decideFromAnswers(name, legal, round, rungs);
+      return { column, rounds: [round], decision };
     },
+  };
+}
+
+// The full decision chain (rung ladder, then hands-win filter, then
+// positional fallback) — shared by radar, blocker, and the lite variants.
+export function decideFromAnswers(
+  name: string,
+  legal: number[],
+  round: JevRound,
+  rungs: Rung[]
+): { column: number; decision: string } {
+  const noulAt = (id: string) => round.answers[id]?.noul ?? 0;
+  const best = (prefix: string) =>
+    legal.map((c) => ({ c, p: noulAt(`${prefix}${c}`) })).sort((a, b) => b.p - a.p)[0];
+
+  for (const kind of rungs) {
+    const { prefix, threshold } = RUNG_DEFS[kind];
+    const top = best(prefix);
+    if (top.p >= threshold) {
+      return { column: top.c, decision: `${name} ${kind}: col ${top.c} @ ${top.p.toFixed(2)}` };
+    }
+  }
+
+  const safe = legal.filter((c) => noulAt(`hand_${c}`) < HANDS_THRESHOLD);
+  const pool = safe.length > 0 ? safe : legal;
+  const pos = pickFromChoice(round.answers.pos, pool);
+  const avoided = legal.length - pool.length;
+  const note = avoided > 0 ? ` (avoided ${avoided} losing col(s))` : "";
+  return {
+    column: pos.column,
+    decision: `${name} positional: col ${pos.column} @ ${pos.p.toFixed(2)}${note}`,
   };
 }
 

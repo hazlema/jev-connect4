@@ -10,6 +10,7 @@ import {
 import { makeAsk } from "./jev";
 import { decomposed } from "./strategies/decomposed";
 import { naive } from "./strategies/naive";
+import { radarSym, radarTrim } from "./strategies/lite";
 import { blocker, radar } from "./strategies/radar";
 import { spoonfed } from "./strategies/spoonfed";
 import { twoPhase } from "./strategies/two-phase";
@@ -22,6 +23,8 @@ export const STRATEGIES: Record<string, Strategy> = {
   spoonfed,
   blocker,
   radar,
+  "radar-trim": radarTrim,
+  "radar-sym": radarSym,
 };
 
 export interface Deps {
@@ -151,7 +154,7 @@ if (import.meta.main) {
   const indexPath = new URL("./public/index.html", import.meta.url).pathname;
 
   Bun.serve({
-    port: 3444,
+    port: Number(process.env.PORT ?? 3444),
     // Must outlive jev-client's 30s timeout × 2 attempts so a slow Jev turn
     // returns a real 502 instead of a dropped socket.
     idleTimeout: 150,
