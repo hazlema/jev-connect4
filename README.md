@@ -1,5 +1,7 @@
 # Connect Four vs Jev
 
+[![Listed in Awesome Jev](badge.svg)](https://github.com/valentynkit/awesome-jev-typesafe)
+
 Web Connect Four where the AI opponent is **Jev** — [TypeSafe's](https://typesafe.ai)
 System One judgment model — with a live inspector that shows **every query
 sent to the model and every reply**, graded ✓/✗ against engine ground
